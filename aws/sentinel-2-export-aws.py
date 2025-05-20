@@ -26,7 +26,7 @@ def run_query(bbox, start_time, end_time, collection_name):
 
 
 # TODO: should this be saved locally? be stored in memory and copied directly to S3? 
-def export_metadata_json(item, out_path):
+def export_local_metadata_json(item, out_path):
     """Export metadata json from each item to a local file."""
     with open(out_path, 'w') as f:
         item_dict = item.to_dict()
@@ -51,8 +51,11 @@ def s3_to_s3_copy(source_url, destination_bucket='cs-awsopendata-sentinel2', pre
     # Source key is everything after the slash - e.g. 'sentinel-s2-l2a-cogs/52/L/HL/2023/1/S2B_52LHL_20230106_0_L2A/B02.tif'
     source_key = parsed_url.path.lstrip('/')
 
+    scene_id = source_key.split('/')[-2]  # Extract scene ID from the key
+    file_key = source_key.split('/')[-1]  # Extract file key from the key
+
     # Construct destination key to match the source key. NOTE - can adjust destination_key as necessary.
-    destination_key = f"{prefix}{source_key}"
+    destination_key = f"{prefix}{scene_id}/{file_key}"
     
     print(f"Copying from bucket: {source_bucket}, key: {source_key}")
     print(f"To bucket: {destination_bucket}, key: {destination_key}")
@@ -88,7 +91,13 @@ def get_sentinel2_data(bbox, start_time, end_time, collection_name, bands_of_int
         
         # Export metadata JSON for the item - TODO: copy this to S3 as well
         metadata_json_path = f"{scene_id}_metadata.json"
-        export_metadata_json(item, metadata_json_path)
+        export_local_metadata_json(item, metadata_json_path)
+
+        # Upload metadata JSON to S3
+        s3_client = boto3.client('s3')
+        metadata_s3_key = f"{prefix}{scene_id}/stac_metadata.json"
+        s3_client.upload_file(metadata_json_path, destination_bucket, metadata_s3_key)
+        print(f"Uploaded metadata to s3://{destination_bucket}/{metadata_s3_key}")
         
         for band in bands_of_interest:
             if band in item.assets:
@@ -113,8 +122,8 @@ if __name__ == "__main__":
     
     # Set data request parameters.
     bbox = [132.52934211276073, -12.730063400794094, 132.54027735328083, -12.721072673008706] # Kakadu National Park
-    start_time = "2023-06-01"
-    end_time = "2023-06-07"
+    start_time = "2023-08-01"
+    end_time = "2023-08-05"
     collection_name = "sentinel-2-l2a"
 
 
@@ -123,7 +132,7 @@ if __name__ == "__main__":
 
     destination_bucket = 'cs-awsopendata-sentinel2'
 
-    prefix = 'kakadu-june/'
+    prefix = 'kakadu-august/'
 
     # Call the function to get Sentinel-2 data and copy to S3.
     get_sentinel2_data(bbox, start_time, end_time, collection_name, bands_of_interest, destination_bucket, prefix)
